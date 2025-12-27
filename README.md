@@ -7,10 +7,10 @@ The application is designed for **manual photo review workflows**, where users c
 **Creator:** Robert Erlandsson
 
 **Project Statistics:**
-- **Total Lines of Code:** 2,079
-- **C# Code:** 1,737 lines
-- **XAML UI:** 342 lines
-- **Source Files:** 13
+- **Total Lines of Code:** 2,100+
+- **C# Code:** 1,750+ lines
+- **XAML UI:** 350+ lines
+- **Source Files:** 14
 
 ------------------------------------------------------------------------
 
@@ -63,6 +63,7 @@ The application is designed for **manual photo review workflows**, where users c
     -   Saves pagination and thumbnail size preferences
     -   Tracks processed images across sessions
     -   Maintains sort preferences
+    -   **Profile System** for multiple workspace configurations
 -   **Image Metadata Display**
     -   Shows creation date for each photo
     -   Displays GPS coordinates when available
@@ -78,6 +79,7 @@ The application is designed for **manual photo review workflows**, where users c
 ## 🧭 Application Overview
 
     ----------------------------------------------------------
+    | Profile: [▼] [New] [Delete] (Auto-saves)             |
     | Root: [Browse]  Target: [Browse]                      |
     | Images/page: [▼] Size: [▼] Sort: [▼] [↑↓]            |
     |--------------------------------------------------------|
@@ -194,6 +196,30 @@ This enables both fast single-image sorting and efficient batch operations.
 
 ## 🧠 Data Models
 
+### Profile
+
+``` csharp
+/// <summary>
+/// Represents a saved workspace configuration with all settings and state.
+/// </summary>
+class Profile
+{
+    public string Name { get; set; }
+    public string? RootFolderPath { get; set; }
+    public string? TargetFolderPath { get; set; }
+    public HashSet<string> ProcessedImages { get; set; }
+    public HashSet<string> SelectedImages { get; set; }
+    public int ImagesPerPage { get; set; }
+    public int ThumbnailSize { get; set; }
+    public SortOption SortBy { get; set; }
+    public bool SortDescending { get; set; }
+    public DateTime CreatedDate { get; set; }
+    public DateTime LastModified { get; set; }
+}
+```
+
+------------------------------------------------------------------------
+
 ### ImageItem
 
 ``` csharp
@@ -237,6 +263,7 @@ class FolderNode
 The application follows the **MVVM pattern** with clean separation of concerns.
 
     /Models
+      Profile.cs            - Profile/workspace configuration
       ImageItem.cs          - Image data with metadata
       FolderNode.cs         - Folder tree structure
 
@@ -296,6 +323,16 @@ The application follows the **MVVM pattern** with clean separation of concerns.
 Settings are saved to `%AppData%\PictureSorter\`:
 - `settings.json` - Root folder, target folder, pagination, thumbnail size
 - `processed_images.json` - Tracks copied images to prevent reprocessing
+- `Profiles\*.json` - Individual profile configurations with complete workspace state
+
+### Profile System
+
+Profiles store complete workspace configurations:
+- **Auto-save**: All changes automatically saved to active profile
+- **Profile switching**: Select from dropdown to load different workspace
+- **Multiple workspaces**: Create profiles for different photo projects
+- **State preservation**: Tracks folders, processed images, selections, and all settings
+- **Isolated data**: Each profile maintains independent state
 
 ------------------------------------------------------------------------
 
@@ -329,6 +366,8 @@ Settings are saved to `%AppData%\PictureSorter\`:
 - [x] Processed images tracking
 - [x] Sorting options (Date, Name, Size)
 - [x] Toggle sort direction
+- [x] Profile system for multiple workspaces
+- [x] Auto-save profiles
 
 ### ✅ Image Operations
 - [x] EXIF orientation support
@@ -379,9 +418,24 @@ Settings are saved to `%AppData%\PictureSorter\`:
 
 ### Getting Started
 1. Launch PictureSorter.exe
-2. Click **"Browse Root..."** to select your source photo folder
-3. Click **"Browse Target..."** to select your destination folder
-4. Select a folder from the tree on the left to view its images
+2. Create a profile by clicking **"New"** or use the default profile
+3. Click **"Browse Root..."** to select your source photo folder
+4. Click **"Browse Target..."** to select your destination folder
+5. Select a folder from the tree on the left to view its images
+
+### Profile Management
+- **Create Profile**: Click "New" button, enter a name for your workspace
+- **Switch Profile**: Select from the dropdown - automatically loads that workspace
+- **Delete Profile**: Select profile and click "Delete" button
+- **Auto-save**: All changes (folders, selections, settings) automatically saved
+
+Each profile maintains:
+- Root and target folder paths
+- Processed images history
+- Selected images for batch operations
+- Images per page setting
+- Thumbnail size preference
+- Sort preferences
 
 ### Sorting Workflow
 1. Configure your preferred images per page and thumbnail size
@@ -403,13 +457,15 @@ Settings are saved to `%AppData%\PictureSorter\`:
 - **View Location**: Click GPS coordinates or right-click → 📍 View Location (opens Google Maps)
 
 ### Settings
-All settings are automatically saved:
+All settings are automatically saved to the active profile:
 - Root and target folder paths
 - Images per page preference
 - Thumbnail size preference
 - Sort by and sort direction preferences
 - Processed images list
 - Selected images for batch operations
+
+Switch between profiles to manage different photo projects independently.
 
 ------------------------------------------------------------------------
 

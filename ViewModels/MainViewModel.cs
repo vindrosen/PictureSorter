@@ -22,9 +22,12 @@ public class MainViewModel : ViewModelBase
     private readonly IImageService _imageService;
     private readonly string _stateFilePath;
     private readonly string _settingsFilePath;
+    private readonly string _profilesDirectory;
     private HashSet<string> _processedImages;
     private HashSet<string> _selectedImages;
     private CancellationTokenSource? _loadFolderCancellation;
+    private string? _currentProfileName;
+    private string? _selectedProfile;
     
     private string? _rootFolderPath;
     private string? _targetFolderPath;
@@ -40,6 +43,25 @@ public class MainViewModel : ViewModelBase
 
     public ObservableCollection<FolderNode> FolderTree { get; }
     public ObservableCollection<ImageItem> CurrentPageImages { get; }
+    public ObservableCollection<string> AvailableProfiles { get; }
+
+    public string? CurrentProfileName
+    {
+        get => _currentProfileName;
+        set => SetProperty(ref _currentProfileName, value);
+    }
+
+    public string? SelectedProfile
+    {
+        get => _selectedProfile;
+        set
+        {
+            if (SetProperty(ref _selectedProfile, value) && !string.IsNullOrEmpty(value))
+            {
+                LoadProfile(value);
+            }
+        }
+    }
 
     public List<int> AvailablePageSizes { get; } = new() { 5, 10, 15, 20, 25, 50, 100 };
     public List<ThumbnailSizeOption> AvailableThumbnailSizes { get; }
@@ -82,6 +104,7 @@ public class MainViewModel : ViewModelBase
             {
                 LoadFolderTree();
                 SaveSettings();
+                AutoSaveCurrentProfile();
             }
         }
     }
@@ -94,6 +117,7 @@ public class MainViewModel : ViewModelBase
             if (SetProperty(ref _targetFolderPath, value))
             {
                 SaveSettings();
+                AutoSaveCurrentProfile();
             }
         }
     }
@@ -155,6 +179,10 @@ public class MainViewModel : ViewModelBase
     public ICommand CopySelectedCommand { get; }
     public ICommand MoveImageCommand { get; }
     public ICommand ToggleSortDirectionCommand { get; }
+    public ICommand CreateProfileCommand { get; }
+    public ICommand LoadProfileCommand { get; }
+    public ICommand SaveCurrentProfileCommand { get; }
+    public ICommand DeleteProfileCommand { get; }
 
     public MainViewModel() : this(new ImageService())
     {
@@ -173,6 +201,14 @@ public class MainViewModel : ViewModelBase
             "PictureSorter",
             "settings.json"
         );
+        _profilesDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "PictureSorter",
+            "Profiles"
+        );
+
+        // Ensure profiles directory exists
+        Directory.CreateDirectory(_profilesDirectory);
 
         AvailableThumbnailSizes = new List<ThumbnailSizeOption>
         {
@@ -185,6 +221,7 @@ public class MainViewModel : ViewModelBase
 
         FolderTree = new ObservableCollection<FolderNode>();
         CurrentPageImages = new ObservableCollection<ImageItem>();
+        AvailableProfiles = new ObservableCollection<string>();
         _allImageFiles = new List<string>();
         _processedImages = new HashSet<string>();
         _selectedImages = new HashSet<string>();
@@ -201,10 +238,15 @@ public class MainViewModel : ViewModelBase
         CopySelectedCommand = new RelayCommand(CopySelected, () => HasSelectedImages);
         MoveImageCommand = new RelayCommand(MoveImage);
         ToggleSortDirectionCommand = new RelayCommand(ToggleSortDirection);
+        CreateProfileCommand = new RelayCommand(CreateProfile);
+        LoadProfileCommand = new RelayCommand(LoadProfile);
+        SaveCurrentProfileCommand = new RelayCommand(SaveCurrentProfile);
+        DeleteProfileCommand = new RelayCommand(DeleteProfile);
         ToggleSortDirectionCommand = new RelayCommand(ToggleSortDirection);
 
         LoadProcessedImages();
         LoadSettings();
+        LoadAvailableProfiles();
     }
 
     private void BrowseRootFolder()
@@ -376,6 +418,7 @@ public class MainViewModel : ViewModelBase
                     }
                     OnPropertyChanged(nameof(SelectedImagesCount));
                     OnPropertyChanged(nameof(HasSelectedImages));
+                    AutoSaveCurrentProfile();
                 }
             };
 
@@ -537,6 +580,9 @@ public class MainViewModel : ViewModelBase
                 // Remove from current view
                 _allImageFiles.Remove(filePath);
                 
+                // Auto-save profile
+                AutoSaveCurrentProfile();
+                
                 StatusMessage = $"Moved: {Path.GetFileName(filePath)}";
                 
                 // Reload current page to refill
@@ -578,6 +624,9 @@ public class MainViewModel : ViewModelBase
                     _allImageFiles.Remove(imagePath);
                     _processedImages.Add(imagePath);
                     SaveProcessedImages();
+                    
+                    // Auto-save profile
+                    AutoSaveCurrentProfile();
                     
                     StatusMessage = $"Deleted: {Path.GetFileName(imagePath)}";
                     
@@ -790,6 +839,9 @@ public class MainViewModel : ViewModelBase
             // Update counts
             OnPropertyChanged(nameof(SelectedImagesCount));
             OnPropertyChanged(nameof(HasSelectedImages));
+            
+            // Auto-save profile
+            AutoSaveCurrentProfile();
 
             // Show summary
             StatusMessage = $"Copied: {successCount}, Skipped: {skipCount}, Errors: {errorCount}";
@@ -801,7 +853,300 @@ public class MainViewModel : ViewModelBase
         {
             IsLoading = false;
         }
-    }}
+    }
+
+    // Profile Management Methods
+    
+    private void LoadAvailableProfiles()
+    {
+        AvailableProfiles.Clear();
+        
+        if (!Directory.Exists(_profilesDirectory))
+            return;
+            
+        var profileFiles = Directory.GetFiles(_profilesDirectory, "*.json");
+        foreach (var file in profileFiles)
+        {
+            var profileName = Path.GetFileNameWithoutExtension(file);
+            AvailableProfiles.Add(profileName);
+        }
+    }
+
+    private void CreateProfile(object? parameter)
+    {
+        var profileName = Microsoft.VisualBasic.Interaction.InputBox(
+            "Enter profile name:",
+            "Create New Profile",
+            "New Profile"
+        );
+
+        if (string.IsNullOrWhiteSpace(profileName))
+            return;
+
+        // Check if profile already exists
+        var profilePath = Path.Combine(_profilesDirectory, $"{profileName}.json");
+        if (File.Exists(profilePath))
+        {
+            var result = MessageBox.Show(
+                $"Profile '{profileName}' already exists. Overwrite?",
+                "Profile Exists",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.No)
+                return;
+        }
+
+        var profile = new Profile
+        {
+            Name = profileName,
+            RootFolderPath = null,
+            TargetFolderPath = null,
+            ProcessedImages = new HashSet<string>(),
+            SelectedImages = new HashSet<string>(),
+            ImagesPerPage = _imagesPerPage,
+            ThumbnailSize = _thumbnailSize,
+            SortBy = _sortBy.ToString(),
+            SortDescending = _sortDescending,
+            CreatedDate = DateTime.Now,
+            LastModified = DateTime.Now
+        };
+
+        SaveProfile(profile);
+        CurrentProfileName = profileName;
+        
+        // Clear current state
+        _rootFolderPath = null;
+        _targetFolderPath = null;
+        _processedImages.Clear();
+        _selectedImages.Clear();
+        _allImageFiles.Clear();
+        CurrentPageImages.Clear();
+        FolderTree.Clear();
+        
+        // Notify property changes
+        OnPropertyChanged(nameof(RootFolderPath));
+        OnPropertyChanged(nameof(TargetFolderPath));
+        OnPropertyChanged(nameof(SelectedImagesCount));
+        OnPropertyChanged(nameof(HasSelectedImages));
+        
+        LoadAvailableProfiles();
+        StatusMessage = $"Profile '{profileName}' created successfully";
+    }
+
+    private void LoadProfile(object? parameter)
+    {
+        string? profileName = parameter as string;
+        
+        // If no parameter, use the selected profile from dropdown
+        if (string.IsNullOrEmpty(profileName))
+        {
+            profileName = _selectedProfile;
+        }
+        
+        if (string.IsNullOrEmpty(profileName))
+        {
+            MessageBox.Show("Please select a profile to load.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var profilePath = Path.Combine(_profilesDirectory, $"{profileName}.json");
+        if (!File.Exists(profilePath))
+        {
+            MessageBox.Show($"Profile '{profileName}' not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        try
+        {
+            var json = File.ReadAllText(profilePath);
+            var profile = JsonSerializer.Deserialize<Profile>(json);
+
+            if (profile == null)
+            {
+                MessageBox.Show("Failed to load profile.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            // Apply profile settings
+            _rootFolderPath = profile.RootFolderPath;
+            _targetFolderPath = profile.TargetFolderPath;
+            _processedImages = new HashSet<string>(profile.ProcessedImages);
+            _selectedImages = new HashSet<string>(profile.SelectedImages);
+            _imagesPerPage = profile.ImagesPerPage;
+            _thumbnailSize = profile.ThumbnailSize;
+            _sortDescending = profile.SortDescending;
+            
+            if (Enum.TryParse<SortOption>(profile.SortBy, out var sortOption))
+            {
+                _sortBy = sortOption;
+            }
+
+            CurrentProfileName = profileName;
+
+            // Notify all property changes
+            OnPropertyChanged(nameof(RootFolderPath));
+            OnPropertyChanged(nameof(TargetFolderPath));
+            OnPropertyChanged(nameof(ImagesPerPage));
+            OnPropertyChanged(nameof(ThumbnailSize));
+            OnPropertyChanged(nameof(SortBy));
+            OnPropertyChanged(nameof(SortDescending));
+            OnPropertyChanged(nameof(SelectedImagesCount));
+            OnPropertyChanged(nameof(HasSelectedImages));
+
+            // Reload folder tree and images
+            LoadFolderTree();
+            if (!string.IsNullOrEmpty(_selectedFolderPath))
+            {
+                _ = LoadImagesForCurrentFolderAsync();
+            }
+
+            StatusMessage = $"Profile '{profileName}' loaded successfully";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error loading profile: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void SaveCurrentProfile(object? parameter)
+    {
+        if (string.IsNullOrEmpty(_currentProfileName))
+        {
+            MessageBox.Show("No profile selected. Create a new profile first.", "No Profile", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var profile = new Profile
+        {
+            Name = _currentProfileName,
+            RootFolderPath = _rootFolderPath,
+            TargetFolderPath = _targetFolderPath,
+            ProcessedImages = new HashSet<string>(_processedImages),
+            SelectedImages = new HashSet<string>(_selectedImages),
+            ImagesPerPage = _imagesPerPage,
+            ThumbnailSize = _thumbnailSize,
+            SortBy = _sortBy.ToString(),
+            SortDescending = _sortDescending,
+            LastModified = DateTime.Now
+        };
+
+        // Preserve creation date if profile exists
+        var profilePath = Path.Combine(_profilesDirectory, $"{_currentProfileName}.json");
+        if (File.Exists(profilePath))
+        {
+            try
+            {
+                var json = File.ReadAllText(profilePath);
+                var existingProfile = JsonSerializer.Deserialize<Profile>(json);
+                if (existingProfile != null)
+                {
+                    profile.CreatedDate = existingProfile.CreatedDate;
+                }
+            }
+            catch { }
+        }
+
+        SaveProfile(profile);
+        StatusMessage = $"Profile '{_currentProfileName}' saved successfully";
+    }
+
+    private void DeleteProfile(object? parameter)
+    {
+        if (parameter is not string profileName)
+        {
+            MessageBox.Show("Please select a profile to delete.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"Are you sure you want to delete profile '{profileName}'?",
+            "Confirm Delete",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.No)
+            return;
+
+        var profilePath = Path.Combine(_profilesDirectory, $"{profileName}.json");
+        if (File.Exists(profilePath))
+        {
+            try
+            {
+                File.Delete(profilePath);
+                LoadAvailableProfiles();
+                
+                if (_currentProfileName == profileName)
+                {
+                    CurrentProfileName = null;
+                }
+
+                StatusMessage = $"Profile '{profileName}' deleted successfully";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error deleting profile: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
+    private void SaveProfile(Profile profile)
+    {
+        try
+        {
+            Directory.CreateDirectory(_profilesDirectory);
+
+            var profilePath = Path.Combine(_profilesDirectory, $"{profile.Name}.json");
+            var json = JsonSerializer.Serialize(profile, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+            File.WriteAllText(profilePath, json);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error saving profile: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+    
+    private void AutoSaveCurrentProfile()
+    {
+        if (string.IsNullOrEmpty(_currentProfileName))
+            return;
+            
+        var profile = new Profile
+        {
+            Name = _currentProfileName,
+            RootFolderPath = _rootFolderPath,
+            TargetFolderPath = _targetFolderPath,
+            ProcessedImages = new HashSet<string>(_processedImages),
+            SelectedImages = new HashSet<string>(_selectedImages),
+            ImagesPerPage = _imagesPerPage,
+            ThumbnailSize = _thumbnailSize,
+            SortBy = _sortBy.ToString(),
+            SortDescending = _sortDescending,
+            LastModified = DateTime.Now
+        };
+
+        // Preserve creation date if profile exists
+        var profilePath = Path.Combine(_profilesDirectory, $"{_currentProfileName}.json");
+        if (File.Exists(profilePath))
+        {
+            try
+            {
+                var json = File.ReadAllText(profilePath);
+                var existingProfile = JsonSerializer.Deserialize<Profile>(json);
+                if (existingProfile != null)
+                {
+                    profile.CreatedDate = existingProfile.CreatedDate;
+                }
+            }
+            catch { }
+        }
+
+        SaveProfile(profile);
+    }
+}
 
 public class ThumbnailSizeOption
 {

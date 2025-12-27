@@ -48,21 +48,34 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 
+                <!-- Profile Management Row -->
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="Profile:" Width="100" FontWeight="Bold"/>
+                    <ComboBox ItemsSource="{Binding AvailableProfiles}" 
+                              SelectedItem="{Binding SelectedProfile}"
+                              Width="200" Margin="0,0,10,0"/>
+                    <Button Content="New" Command="{Binding CreateProfileCommand}" MinWidth="60"/>
+                    <Button Content="Delete" Command="{Binding DeleteProfileCommand}" 
+                            CommandParameter="{Binding SelectedProfile}" MinWidth="60"/>
+                    <TextBlock Text="(Auto-saves)" FontStyle="Italic" Foreground="#666666" Margin="10,0,0,0"/>
+                </StackPanel>
+                
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
                     <TextBlock Text="Root Folder:" Width="100" FontWeight="Bold"/>
                     <TextBlock Text="{Binding RootFolderPath}" Width="600" TextTrimming="CharacterEllipsis"/>
                     <Button Content="Browse Root..." Command="{Binding BrowseRootFolderCommand}"/>
                 </StackPanel>
                 
-                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,10">
                     <TextBlock Text="Target Folder:" Width="100" FontWeight="Bold"/>
                     <TextBlock Text="{Binding TargetFolderPath}" Width="600" TextTrimming="CharacterEllipsis"/>
                     <Button Content="Browse Target..." Command="{Binding BrowseTargetFolderCommand}"/>
                 </StackPanel>
                 
-                <StackPanel Grid.Row="2" Orientation="Horizontal">
+                <StackPanel Grid.Row="3" Orientation="Horizontal">
                     <TextBlock Text="Images per page:" Width="120" FontWeight="Bold" Margin="0,0,10,0"/>
                     <ComboBox ItemsSource="{Binding AvailablePageSizes}" 
                               SelectedItem="{Binding ImagesPerPage}"
