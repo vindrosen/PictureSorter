@@ -1,0 +1,218 @@
+<Window x:Class="PictureSorter.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewmodels="clr-namespace:PictureSorter.ViewModels"
+        mc:Ignorable="d"
+        Title="Picture Sorter" 
+        Icon="/ChatGPT Image 27 dec. 2025 10_01_29.png"
+        WindowState="Maximized"
+        MinHeight="600" MinWidth="800"
+        WindowStartupLocation="CenterScreen">
+    
+    <Window.DataContext>
+        <viewmodels:MainViewModel />
+    </Window.DataContext>
+
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="MinWidth" Value="100"/>
+        </Style>
+        
+        <Style TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top Toolbar -->
+        <Border Grid.Row="0" Background="#F0F0F0" BorderBrush="#CCCCCC" BorderThickness="0,0,0,1" Padding="10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="Root Folder:" Width="100" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding RootFolderPath}" Width="600" TextTrimming="CharacterEllipsis"/>
+                    <Button Content="Browse Root..." Command="{Binding BrowseRootFolderCommand}"/>
+                </StackPanel>
+                
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="Target Folder:" Width="100" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding TargetFolderPath}" Width="600" TextTrimming="CharacterEllipsis"/>
+                    <Button Content="Browse Target..." Command="{Binding BrowseTargetFolderCommand}"/>
+                </StackPanel>
+                
+                <StackPanel Grid.Row="2" Orientation="Horizontal">
+                    <TextBlock Text="Images per page:" Width="120" FontWeight="Bold" Margin="0,0,10,0"/>
+                    <ComboBox ItemsSource="{Binding AvailablePageSizes}" 
+                              SelectedItem="{Binding ImagesPerPage}"
+                              Width="80" Margin="0,0,30,0"/>
+                    
+                    <TextBlock Text="Thumbnail size:" Width="120" FontWeight="Bold" Margin="0,0,10,0"/>
+                    <ComboBox ItemsSource="{Binding AvailableThumbnailSizes}" 
+                              SelectedItem="{Binding ThumbnailSize}"
+                              DisplayMemberPath="Name"
+                              SelectedValuePath="Size"
+                              SelectedValue="{Binding ThumbnailSize}"
+                              Width="120"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main Content Area -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left: Folder Tree -->
+            <Border Grid.Column="0" BorderBrush="#CCCCCC" BorderThickness="0,0,1,0" Background="White">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Folders" FontWeight="Bold" FontSize="14" 
+                               Padding="10" Background="#E8E8E8"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                        <TreeView ItemsSource="{Binding FolderTree}" 
+                                  SelectedItemChanged="TreeView_SelectedItemChanged"
+                                  Padding="5">
+                            <TreeView.ItemTemplate>
+                                <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="📁" Margin="0,0,5,0"/>
+                                        <TextBlock Text="{Binding Name}"/>
+                                    </StackPanel>
+                                </HierarchicalDataTemplate>
+                            </TreeView.ItemTemplate>
+                        </TreeView>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- Right: Image Grid and Navigation -->
+            <Grid Grid.Column="1" Background="#FAFAFA">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Loading Overlay -->
+                <Border Grid.Row="0" Grid.RowSpan="2" Background="#80000000" 
+                        Panel.ZIndex="999">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock Text="Loading..." FontSize="24" Foreground="White" 
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- Image Grid (dynamic) -->
+                <ScrollViewer x:Name="ImageScrollViewer" Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding CurrentPageImages}" Margin="20">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel HorizontalAlignment="Center"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#CCCCCC" BorderThickness="1" Margin="10" 
+                                        Background="White" Padding="10" CornerRadius="5">
+                                    <StackPanel>
+                                        <!-- Image Thumbnail -->
+                                        <Border Width="{Binding DataContext.ThumbnailSize, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                Height="{Binding DataContext.ThumbnailSize, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                Background="#F5F5F5" 
+                                                BorderBrush="#DDDDDD" BorderThickness="1"
+                                                Cursor="Hand">
+                                            <Border.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="Rotate 90° Clockwise" 
+                                                              Command="{Binding DataContext.RotateImageCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                              CommandParameter="{Binding FilePath}"/>
+                                                    <Separator/>
+                                                    <MenuItem Header="Delete Image" 
+                                                              Command="{Binding DataContext.DeleteImageCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                              CommandParameter="{Binding FilePath}"/>
+                                                </ContextMenu>
+                                            </Border.ContextMenu>
+                                            <Image Source="{Binding Thumbnail}" 
+                                                   Stretch="Uniform"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   MouseLeftButtonDown="Image_MouseLeftButtonDown"
+                                                   Tag="{Binding FilePath}"/>
+                                        </Border>
+                                        
+                                        <!-- File Name -->
+                                        <TextBlock Text="{Binding FileName}" 
+                                                   TextTrimming="CharacterEllipsis"
+                                                   TextAlignment="Center"
+                                                   Margin="0,5,0,2"
+                                                   FontSize="11"
+                                                   MaxWidth="{Binding DataContext.ThumbnailSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   ToolTip="{Binding FileName}"/>
+                                        
+                                        <!-- Creation Date -->
+                                        <TextBlock Text="{Binding CreationDate, StringFormat='Created: {0:yyyy-MM-dd HH:mm}'}" 
+                                                   TextAlignment="Center"
+                                                   Margin="0,0,0,5"
+                                                   FontSize="10"
+                                                   Foreground="#666666"/>
+                                        
+                                        <!-- Checkbox -->
+                                        <CheckBox Content="Copy to target" 
+                                                  IsChecked="{Binding IsChecked}"
+                                                  HorizontalAlignment="Center"
+                                                  Margin="0,5,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- Navigation Controls -->
+                <Border Grid.Row="1" Background="White" BorderBrush="#CCCCCC" 
+                        BorderThickness="0,1,0,0" Padding="20,10">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Button Content="← Previous" 
+                                Command="{Binding PreviousPageCommand}"
+                                MinWidth="120"/>
+                        <Button Content="Next →" 
+                                Command="{Binding NextPageCommand}"
+                                MinWidth="120"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="2" Background="#F0F0F0" BorderBrush="#CCCCCC" 
+                BorderThickness="0,1,0,0" Padding="10,5">
+            <TextBlock Text="{Binding StatusMessage}" 
+                       FontSize="12"
+                       Foreground="#333333"/>
+        </Border>
+    </Grid>
+</Window>
