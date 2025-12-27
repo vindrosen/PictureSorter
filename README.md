@@ -33,9 +33,14 @@ The application is designed for **manual photo review workflows**, where users c
     -   Navigate with arrow keys (Left/Right)
     -   Right-click menu for rotate and delete
 -   **Image Manipulation**
-    -   Rotate images 90° clockwise
+    -   Rotate images 90° clockwise or counter-clockwise
     -   Delete unwanted images
     -   Operations work in both grid and fullscreen views
+-   **GPS Location Support**
+    -   Automatically reads GPS coordinates from EXIF metadata
+    -   Displays coordinates under images with location data
+    -   Click coordinates or right-click → "📍 View Location" to open in Google Maps
+    -   Supports UInt64 packed rational format for GPS data
 -   **Configurable Thumbnail Sizes**
     -   5 size options: Small (100px) to X-Large (300px)
 -   **Persistent Settings**
@@ -44,6 +49,7 @@ The application is designed for **manual photo review workflows**, where users c
     -   Tracks processed images across sessions
 -   **Image Metadata Display**
     -   Shows creation date for each photo
+    -   Displays GPS coordinates when available
     -   File name display
 -   **Custom Application Icon**
 
@@ -167,6 +173,9 @@ class ImageItem : ViewModelBase
     public DateTime? CreationDate { get; set; }
     public BitmapSource? Thumbnail { get; set; }
     public bool IsChecked { get; set; }
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
+    public bool HasGpsData => Latitude.HasValue && Longitude.HasValue;
 }
 ```
 
@@ -282,14 +291,17 @@ Settings are saved to `%AppData%\PictureSorter\`:
 
 ### ✅ Image Operations
 - [x] EXIF orientation support
-- [x] Image rotation (90° increments)
+- [x] Image rotation (90° clockwise and counter-clockwise)
 - [x] Image deletion
 - [x] Fullscreen viewer
 - [x] Arrow key navigation
 - [x] Right-click context menus
+- [x] GPS coordinate extraction from EXIF
+- [x] Google Maps integration for GPS locations
 
 ### ✅ UI/UX
 - [x] Creation date display
+- [x] GPS coordinates display with clickable links
 - [x] Custom application icon
 - [x] Auto-scroll to top on pagination
 - [x] Loading indicators
@@ -334,8 +346,9 @@ Settings are saved to `%AppData%\PictureSorter\`:
 ### Image Operations
 - **Fullscreen View**: Click any image
 - **Navigate**: Use Left/Right arrow keys in fullscreen
-- **Rotate**: Right-click → Rotate 90°
+- **Rotate**: Right-click → Rotate 90° Clockwise or Counter-Clockwise
 - **Delete**: Right-click → Delete
+- **View Location**: Click GPS coordinates or right-click → 📍 View Location (opens Google Maps)
 
 ### Settings
 All settings are automatically saved:

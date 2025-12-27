@@ -16,6 +16,8 @@
     </Window.DataContext>
 
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        
         <Style TargetType="Button">
             <Setter Property="Padding" Value="10,5"/>
             <Setter Property="Margin" Value="5"/>
@@ -147,12 +149,20 @@
                                                 Cursor="Hand">
                                             <Border.ContextMenu>
                                                 <ContextMenu>
+                                                    <MenuItem Header="📍 View Location" 
+                                                              Command="{Binding PlacementTarget.DataContext.DataContext.OpenLocationCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              CommandParameter="{Binding}"
+                                                              Visibility="{Binding HasGpsData, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                                    <Separator Visibility="{Binding HasGpsData, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                                     <MenuItem Header="Rotate 90° Clockwise" 
-                                                              Command="{Binding DataContext.RotateImageCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                              Command="{Binding PlacementTarget.DataContext.DataContext.RotateClockwiseCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              CommandParameter="{Binding FilePath}"/>
+                                                    <MenuItem Header="Rotate 90° Counter-Clockwise" 
+                                                              Command="{Binding PlacementTarget.DataContext.DataContext.RotateCounterClockwiseCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                               CommandParameter="{Binding FilePath}"/>
                                                     <Separator/>
                                                     <MenuItem Header="Delete Image" 
-                                                              Command="{Binding DataContext.DeleteImageCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                              Command="{Binding PlacementTarget.DataContext.DataContext.DeleteImageCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                               CommandParameter="{Binding FilePath}"/>
                                                 </ContextMenu>
                                             </Border.ContextMenu>
@@ -179,6 +189,30 @@
                                                    Margin="0,0,0,5"
                                                    FontSize="10"
                                                    Foreground="#666666"/>
+                                        
+                                        <!-- GPS Coordinates -->
+                                        <TextBlock TextAlignment="Center"
+                                                   Margin="0,0,0,5"
+                                                   FontSize="9"
+                                                   Foreground="#4285F4"
+                                                   Cursor="Hand"
+                                                   MouseLeftButtonDown="GpsCoordinates_Click"
+                                                   Tag="{Binding}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasGpsData}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                            <Run Text="📍 "/>
+                                            <Run Text="{Binding Latitude, StringFormat='{}{0:F6}'}"/>
+                                            <Run Text=", "/>
+                                            <Run Text="{Binding Longitude, StringFormat='{}{0:F6}'}"/>
+                                        </TextBlock>
                                         
                                         <!-- Checkbox -->
                                         <CheckBox Content="Copy to target" 

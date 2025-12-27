@@ -1,5 +1,7 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using PictureSorter.Services;
 
@@ -45,13 +47,75 @@ public partial class FullscreenImageWindow : Window
 
         try
         {
-            var bitmap = new BitmapImage();
-            bitmap.BeginInit();
-            bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.UriSource = new Uri(_imagePaths[_currentIndex], UriKind.Absolute);
-            bitmap.EndInit();
+            var filePath = _imagePaths[_currentIndex];
             
-            FullImage.Source = bitmap;
+            using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.None);
+                var frame = decoder.Frames[0];
+                
+                // Get the rotation from metadata
+                var metadata = frame.Metadata as BitmapMetadata;
+                Rotation rotation = Rotation.Rotate0;
+                
+                if (metadata != null)
+                {
+                    try
+                    {
+                        object? orientationQuery = null;
+                        if (metadata.ContainsQuery("System.Photo.Orientation"))
+                            orientationQuery = metadata.GetQuery("System.Photo.Orientation");
+                        else if (metadata.ContainsQuery("/app1/ifd/{ushort=274}"))
+                            orientationQuery = metadata.GetQuery("/app1/ifd/{ushort=274}");
+                        
+                        if (orientationQuery != null)
+                        {
+                            var orientationValue = Convert.ToUInt16(orientationQuery);
+                            rotation = orientationValue switch
+                            {
+                                3 => Rotation.Rotate180,
+                                6 => Rotation.Rotate90,
+                                8 => Rotation.Rotate270,
+                                _ => Rotation.Rotate0
+                            };
+                        }
+                    }
+                    catch { }
+                }
+                
+                // Apply rotation if needed
+                BitmapSource finalImage = frame;
+                if (rotation != Rotation.Rotate0)
+                {
+                    var rotateTransform = rotation switch
+                    {
+                        Rotation.Rotate90 => new RotateTransform(90),
+                        Rotation.Rotate180 => new RotateTransform(180),
+                        Rotation.Rotate270 => new RotateTransform(270),
+                        _ => new RotateTransform(0)
+                    };
+                    finalImage = new TransformedBitmap(frame, rotateTransform);
+                }
+                
+                // Convert to frozen BitmapImage for display
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(finalImage));
+                
+                using (var memoryStream = new MemoryStream())
+                {
+                    encoder.Save(memoryStream);
+                    memoryStream.Position = 0;
+                    
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.StreamSource = memoryStream;
+                    bitmap.EndInit();
+                    bitmap.Freeze();
+                    
+                    FullImage.Source = bitmap;
+                }
+            }
         }
         catch
         {
@@ -106,15 +170,28 @@ public partial class FullscreenImageWindow : Window
     }
 
     /// <summary>
-    /// Handles the Rotate context menu item click to rotate the current image 90 degrees.
+    /// Handles the Rotate Clockwise context menu item click to rotate the current image 90 degrees clockwise.
     /// </summary>
-    private async void RotateImage_Click(object sender, RoutedEventArgs e)
+    private async void RotateClockwise_Click(object sender, RoutedEventArgs e)
+    {
+        await RotateCurrentImageAsync(90);
+    }
+
+    /// <summary>
+    /// Handles the Rotate Counter-Clockwise context menu item click to rotate the current image 90 degrees counter-clockwise.
+    /// </summary>
+    private async void RotateCounterClockwise_Click(object sender, RoutedEventArgs e)
+    {
+        await RotateCurrentImageAsync(-90);
+    }
+
+    private async Task RotateCurrentImageAsync(int degrees)
     {
         if (_currentIndex < 0 || _currentIndex >= _imagePaths.Count)
             return;
 
         var imagePath = _imagePaths[_currentIndex];
-        var success = await _imageService.RotateImageAsync(imagePath, 90);
+        var success = await _imageService.RotateImageAsync(imagePath, degrees);
         
         if (success)
         {

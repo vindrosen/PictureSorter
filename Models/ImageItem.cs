@@ -10,6 +10,8 @@ public class ImageItem : ViewModelBase
 {
     private bool _isChecked;
     private BitmapSource? _thumbnail;
+    private double? _latitude;
+    private double? _longitude;
 
     /// <summary>
     /// Gets or sets the full file path of the image.
@@ -43,4 +45,39 @@ public class ImageItem : ViewModelBase
         get => _isChecked;
         set => SetProperty(ref _isChecked, value);
     }
+
+    /// <summary>
+    /// Gets or sets the GPS latitude of the image.
+    /// </summary>
+    public double? Latitude
+    {
+        get => _latitude;
+        set
+        {
+            if (SetProperty(ref _latitude, value))
+            {
+                OnPropertyChanged(nameof(HasGpsData));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the GPS longitude of the image.
+    /// </summary>
+    public double? Longitude
+    {
+        get => _longitude;
+        set
+        {
+            if (SetProperty(ref _longitude, value))
+            {
+                OnPropertyChanged(nameof(HasGpsData));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets whether the image has GPS coordinates.
+    /// </summary>
+    public bool HasGpsData => Latitude.HasValue && Longitude.HasValue;
 }

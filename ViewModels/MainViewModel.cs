@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
@@ -104,8 +105,10 @@ public class MainViewModel : ViewModelBase
     public ICommand PreviousPageCommand { get; }
     public ICommand NextPageCommand { get; }
     public ICommand ViewFullscreenCommand { get; }
-    public ICommand RotateImageCommand { get; }
+    public ICommand RotateClockwiseCommand { get; }
+    public ICommand RotateCounterClockwiseCommand { get; }
     public ICommand DeleteImageCommand { get; }
+    public ICommand OpenLocationCommand { get; }
 
     public MainViewModel() : this(new ImageService())
     {
@@ -144,8 +147,10 @@ public class MainViewModel : ViewModelBase
         PreviousPageCommand = new RelayCommand(PreviousPage, () => CanNavigatePrevious);
         NextPageCommand = new RelayCommand(NextPage, () => CanNavigateNext);
         ViewFullscreenCommand = new RelayCommand(ViewFullscreen);
-        RotateImageCommand = new RelayCommand(RotateImage);
+        RotateClockwiseCommand = new RelayCommand(RotateClockwise);
+        RotateCounterClockwiseCommand = new RelayCommand(RotateCounterClockwise);
         DeleteImageCommand = new RelayCommand(DeleteImage);
+        OpenLocationCommand = new RelayCommand(OpenLocation);
 
         LoadProcessedImages();
         LoadSettings();
@@ -288,6 +293,14 @@ public class MainViewModel : ViewModelBase
             // Load thumbnail asynchronously with configured size
             var thumbnail = await _imageService.LoadThumbnailAsync(filePath, _thumbnailSize);
             imageItem.Thumbnail = thumbnail;
+            
+            // Load GPS coordinates asynchronously
+            var gpsData = await _imageService.GetGpsCoordinatesAsync(filePath);
+            if (gpsData.HasValue)
+            {
+                imageItem.Latitude = gpsData.Value.Latitude;
+                imageItem.Longitude = gpsData.Value.Longitude;
+            }
         }
 
         OnPropertyChanged(nameof(CanNavigatePrevious));
@@ -364,12 +377,22 @@ public class MainViewModel : ViewModelBase
         }
     }
 
-    private async void RotateImage(object? parameter)
+    private async void RotateClockwise(object? parameter)
+    {
+        await RotateImageAsync(parameter, 90);
+    }
+
+    private async void RotateCounterClockwise(object? parameter)
+    {
+        await RotateImageAsync(parameter, -90);
+    }
+
+    private async Task RotateImageAsync(object? parameter, int degrees)
     {
         if (parameter is string imagePath)
         {
             StatusMessage = "Rotating image...";
-            var success = await _imageService.RotateImageAsync(imagePath, 90);
+            var success = await _imageService.RotateImageAsync(imagePath, degrees);
             
             if (success)
             {
@@ -523,6 +546,39 @@ public class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusMessage = $"Error saving state: {ex.Message}";
+        }
+    }
+
+    private void OpenLocation(object? parameter)
+    {
+        if (parameter is not ImageItem imageItem || !imageItem.HasGpsData)
+        {
+            StatusMessage = "No GPS data available";
+            return;
+        }
+
+        try
+        {
+            // Use invariant culture to ensure period as decimal separator
+            var lat = imageItem.Latitude?.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+            var lon = imageItem.Longitude?.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+            var url = $"https://www.google.com/maps?q={lat},{lon}";
+            
+            StatusMessage = $"Opening: {url}";
+            
+            var psi = new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            };
+            Process.Start(psi);
+            
+            StatusMessage = $"Opened location: {lat}, {lon}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error opening location: {ex.Message}";
+            System.Windows.MessageBox.Show($"Failed to open browser:\n{ex.Message}\n\nURL: https://www.google.com/maps?q={imageItem.Latitude},{imageItem.Longitude}", "Error");
         }
     }
 }

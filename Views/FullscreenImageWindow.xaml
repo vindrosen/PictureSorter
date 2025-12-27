@@ -15,7 +15,8 @@
                VerticalAlignment="Center">
             <Image.ContextMenu>
                 <ContextMenu>
-                    <MenuItem Header="Rotate 90° Clockwise" Click="RotateImage_Click"/>
+                    <MenuItem Header="Rotate 90° Clockwise" Click="RotateClockwise_Click"/>
+                    <MenuItem Header="Rotate 90° Counter-Clockwise" Click="RotateCounterClockwise_Click"/>
                     <Separator/>
                     <MenuItem Header="Delete Image" Click="DeleteImage_Click"/>
                 </ContextMenu>

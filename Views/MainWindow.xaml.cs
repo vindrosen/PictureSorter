@@ -56,4 +56,18 @@ public partial class MainWindow : Window
             fullscreenWindow.ShowDialog();
         }
     }
+
+    /// <summary>
+    /// Handles clicking on GPS coordinates to open the location in Google Maps.
+    /// </summary>
+    private void GpsCoordinates_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.TextBlock textBlock || DataContext is not MainViewModel viewModel)
+            return;
+
+        if (textBlock.Tag is ImageItem imageItem)
+        {
+            viewModel.OpenLocationCommand.Execute(imageItem);
+        }
+    }
 }

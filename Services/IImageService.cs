@@ -58,4 +58,11 @@ public interface IImageService
     /// <param name="filePath">The path to the image file to delete.</param>
     /// <returns>True if deletion was successful; otherwise false.</returns>
     Task<bool> DeleteImageAsync(string filePath);
+    
+    /// <summary>
+    /// Gets GPS coordinates from an image's EXIF data.
+    /// </summary>
+    /// <param name="filePath">The path to the image file.</param>
+    /// <returns>A tuple containing latitude and longitude if available; otherwise null.</returns>
+    Task<(double? Latitude, double? Longitude)?> GetGpsCoordinatesAsync(string filePath);
 }
