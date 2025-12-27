@@ -60,7 +60,15 @@
                     <Button Content="New" Command="{Binding CreateProfileCommand}" MinWidth="60"/>
                     <Button Content="Delete" Command="{Binding DeleteProfileCommand}" 
                             CommandParameter="{Binding SelectedProfile}" MinWidth="60"/>
-                    <TextBlock Text="(Auto-saves)" FontStyle="Italic" Foreground="#666666" Margin="10,0,0,0"/>
+                    <TextBlock Text="(Auto-saves)" FontStyle="Italic" Foreground="#666666" Margin="10,0,20,0"/>
+                    
+                    <!-- Undo/Redo Buttons -->
+                    <Button Content="↶ Undo" Command="{Binding UndoCommand}" 
+                            ToolTip="{Binding UndoDescription}"
+                            MinWidth="80" FontSize="14"/>
+                    <Button Content="↷ Redo" Command="{Binding RedoCommand}"
+                            ToolTip="{Binding RedoDescription}"
+                            MinWidth="80" FontSize="14"/>
                 </StackPanel>
                 
                 <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">

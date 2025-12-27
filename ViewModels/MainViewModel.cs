@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
+using PictureSorter.Commands;
 using PictureSorter.Models;
 using PictureSorter.Services;
 
@@ -20,6 +21,7 @@ public class MainViewModel : ViewModelBase
 {
     public event EventHandler? ScrollToTop;
     private readonly IImageService _imageService;
+    private readonly UndoRedoManager _undoRedoManager;
     private readonly string _stateFilePath;
     private readonly string _settingsFilePath;
     private readonly string _profilesDirectory;
@@ -166,6 +168,11 @@ public class MainViewModel : ViewModelBase
 
     public int SelectedImagesCount => _selectedImages?.Count ?? 0;
     public bool HasSelectedImages => SelectedImagesCount > 0;
+    
+    public bool CanUndo => _undoRedoManager.CanUndo;
+    public bool CanRedo => _undoRedoManager.CanRedo;
+    public string? UndoDescription => _undoRedoManager.UndoDescription;
+    public string? RedoDescription => _undoRedoManager.RedoDescription;
 
     public ICommand BrowseRootFolderCommand { get; }
     public ICommand BrowseTargetFolderCommand { get; }
@@ -183,6 +190,8 @@ public class MainViewModel : ViewModelBase
     public ICommand LoadProfileCommand { get; }
     public ICommand SaveCurrentProfileCommand { get; }
     public ICommand DeleteProfileCommand { get; }
+    public ICommand UndoCommand { get; }
+    public ICommand RedoCommand { get; }
 
     public MainViewModel() : this(new ImageService())
     {
@@ -191,6 +200,9 @@ public class MainViewModel : ViewModelBase
     public MainViewModel(IImageService imageService)
     {
         _imageService = imageService;
+        _undoRedoManager = new UndoRedoManager();
+        _undoRedoManager.StateChanged += OnUndoRedoStateChanged;
+        
         _stateFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "PictureSorter",
@@ -242,6 +254,8 @@ public class MainViewModel : ViewModelBase
         LoadProfileCommand = new RelayCommand(LoadProfile);
         SaveCurrentProfileCommand = new RelayCommand(SaveCurrentProfile);
         DeleteProfileCommand = new RelayCommand(DeleteProfile);
+        UndoCommand = new RelayCommand(async () => await UndoAsync(), () => CanUndo);
+        RedoCommand = new RelayCommand(async () => await RedoAsync(), () => CanRedo);
         ToggleSortDirectionCommand = new RelayCommand(ToggleSortDirection);
 
         LoadProcessedImages();
@@ -496,7 +510,9 @@ public class MainViewModel : ViewModelBase
         if (parameter is string imagePath)
         {
             StatusMessage = "Rotating image...";
-            var success = await _imageService.RotateImageAsync(imagePath, degrees);
+            
+            var command = new RotateImageCommand(_imageService, imagePath, degrees);
+            var success = await _undoRedoManager.ExecuteCommandAsync(command);
             
             if (success)
             {
@@ -564,7 +580,8 @@ public class MainViewModel : ViewModelBase
         IsLoading = true;
         try
         {
-            var success = await _imageService.MoveImageAsync(filePath, TargetFolderPath);
+            var command = new MoveImageCommand(_imageService, filePath, TargetFolderPath);
+            var success = await _undoRedoManager.ExecuteCommandAsync(command);
             
             if (success)
             {
@@ -616,7 +633,9 @@ public class MainViewModel : ViewModelBase
             if (result == MessageBoxResult.Yes)
             {
                 StatusMessage = "Deleting image...";
-                var success = await _imageService.DeleteImageAsync(imagePath);
+                
+                var command = new DeleteImageCommand(_imageService, imagePath);
+                var success = await _undoRedoManager.ExecuteCommandAsync(command);
                 
                 if (success)
                 {
@@ -795,59 +814,52 @@ public class MainViewModel : ViewModelBase
         }
 
         IsLoading = true;
-        int successCount = 0;
-        int skipCount = 0;
-        int errorCount = 0;
 
         try
         {
             // Create a copy of selected images to iterate over
             var imagesToCopy = _selectedImages.ToList();
             
-            foreach (var filePath in imagesToCopy)
+            var command = new CopyImagesCommand(_imageService, imagesToCopy, TargetFolderPath);
+            var success = await _undoRedoManager.ExecuteCommandAsync(command);
+            
+            if (success)
             {
-                try
+                int successCount = 0;
+                
+                // Update state for successfully copied images
+                foreach (var filePath in imagesToCopy)
                 {
-                    var success = await _imageService.CopyImageAsync(filePath, TargetFolderPath);
-                    
-                    if (success)
+                    var targetPath = Path.Combine(TargetFolderPath, Path.GetFileName(filePath));
+                    if (File.Exists(targetPath))
                     {
-                        // Mark as processed
                         _processedImages.Add(filePath);
-                        
-                        // Remove from selection
                         _selectedImages.Remove(filePath);
-                        
-                        // Remove from current view if present
                         _allImageFiles.Remove(filePath);
                         successCount++;
                     }
-                    else
-                    {
-                        skipCount++;
-                    }
                 }
-                catch
-                {
-                    errorCount++;
-                }
+
+                // Save processed images
+                SaveProcessedImages();
+
+                // Update counts
+                OnPropertyChanged(nameof(SelectedImagesCount));
+                OnPropertyChanged(nameof(HasSelectedImages));
+                
+                // Auto-save profile
+                AutoSaveCurrentProfile();
+
+                // Show summary
+                StatusMessage = $"Copied {successCount} image(s)";
+
+                // Reload current page to refill
+                await LoadCurrentPageAsync();
             }
-
-            // Save processed images
-            SaveProcessedImages();
-
-            // Update counts
-            OnPropertyChanged(nameof(SelectedImagesCount));
-            OnPropertyChanged(nameof(HasSelectedImages));
-            
-            // Auto-save profile
-            AutoSaveCurrentProfile();
-
-            // Show summary
-            StatusMessage = $"Copied: {successCount}, Skipped: {skipCount}, Errors: {errorCount}";
-
-            // Reload current page to refill
-            await LoadCurrentPageAsync();
+            else
+            {
+                StatusMessage = "Failed to copy images";
+            }
         }
         finally
         {
@@ -1145,6 +1157,153 @@ public class MainViewModel : ViewModelBase
         }
 
         SaveProfile(profile);
+    }
+    
+    // Undo/Redo Methods
+    
+    private async Task UndoAsync()
+    {
+        if (!CanUndo)
+            return;
+
+        IsLoading = true;
+        try
+        {
+            var success = await _undoRedoManager.UndoAsync();
+            
+            if (success)
+            {
+                StatusMessage = $"Undo: {_undoRedoManager.RedoDescription}";
+                
+                // Restore processed images state based on command type
+                var undoneCommand = _undoRedoManager.LastUndoneCommand;
+                if (undoneCommand is CopyImagesCommand copyCommand)
+                {
+                    // Remove copied files from processed images so they appear again
+                    foreach (var sourceFile in copyCommand.SuccessfulSourceFiles)
+                    {
+                        _processedImages.Remove(sourceFile);
+                    }
+                    SaveProcessedImages();
+                }
+                else if (undoneCommand is MoveImageCommand moveCommand)
+                {
+                    // Remove moved file from processed images so it appears again
+                    _processedImages.Remove(moveCommand.SourceFilePath);
+                    SaveProcessedImages();
+                }
+                else if (undoneCommand is DeleteImageCommand deleteCommand)
+                {
+                    // Remove deleted file from processed images so it appears again
+                    _processedImages.Remove(deleteCommand.FilePath);
+                    SaveProcessedImages();
+                }
+                
+                // Reload the entire folder to pick up restored files
+                if (!string.IsNullOrEmpty(_selectedFolderPath))
+                {
+                    _loadFolderCancellation?.Cancel();
+                    _loadFolderCancellation = new CancellationTokenSource();
+                    
+                    await LoadImagesForCurrentFolderAsync(_loadFolderCancellation.Token);
+                }
+                else
+                {
+                    await LoadCurrentPageAsync();
+                }
+            }
+            else
+            {
+                StatusMessage = "Undo failed";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error during undo: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+    
+    private async Task RedoAsync()
+    {
+        if (!CanRedo)
+            return;
+
+        IsLoading = true;
+        try
+        {
+            // Get the command before executing so we can check its type
+            var commandToRedo = _undoRedoManager.LastUndoneCommand;
+            
+            var success = await _undoRedoManager.RedoAsync();
+            
+            if (success)
+            {
+                StatusMessage = $"Redo: {_undoRedoManager.UndoDescription}";
+                
+                // Re-apply processed images state based on command type
+                if (commandToRedo is CopyImagesCommand copyCommand)
+                {
+                    // Re-add copied files to processed images
+                    foreach (var sourceFile in copyCommand.SuccessfulSourceFiles)
+                    {
+                        _processedImages.Add(sourceFile);
+                    }
+                    SaveProcessedImages();
+                }
+                else if (commandToRedo is MoveImageCommand moveCommand)
+                {
+                    // Re-add moved file to processed images
+                    _processedImages.Add(moveCommand.SourceFilePath);
+                    SaveProcessedImages();
+                }
+                else if (commandToRedo is DeleteImageCommand deleteCommand)
+                {
+                    // Re-add deleted file to processed images
+                    _processedImages.Add(deleteCommand.FilePath);
+                    SaveProcessedImages();
+                }
+                
+                // Reload the entire folder to reflect the redo operation
+                if (!string.IsNullOrEmpty(_selectedFolderPath))
+                {
+                    _loadFolderCancellation?.Cancel();
+                    _loadFolderCancellation = new CancellationTokenSource();
+                    
+                    await LoadImagesForCurrentFolderAsync(_loadFolderCancellation.Token);
+                }
+                else
+                {
+                    await LoadCurrentPageAsync();
+                }
+            }
+            else
+            {
+                StatusMessage = "Redo failed";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error during redo: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+    
+    private void OnUndoRedoStateChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(CanUndo));
+        OnPropertyChanged(nameof(CanRedo));
+        OnPropertyChanged(nameof(UndoDescription));
+        OnPropertyChanged(nameof(RedoDescription));
+        
+        ((RelayCommand)UndoCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)RedoCommand).RaiseCanExecuteChanged();
     }
 }
 

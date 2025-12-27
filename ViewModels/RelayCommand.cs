@@ -58,4 +58,12 @@ public class RelayCommand : ICommand
     {
         _execute(parameter);
     }
+    
+    /// <summary>
+    /// Raises the CanExecuteChanged event manually.
+    /// </summary>
+    public void RaiseCanExecuteChanged()
+    {
+        CommandManager.InvalidateRequerySuggested();
+    }
 }

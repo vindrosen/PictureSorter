@@ -7,10 +7,10 @@ The application is designed for **manual photo review workflows**, where users c
 **Creator:** Robert Erlandsson
 
 **Project Statistics:**
-- **Total Lines of Code:** 2,100+
-- **C# Code:** 1,750+ lines
-- **XAML UI:** 350+ lines
-- **Source Files:** 14
+- **Total Lines of Code:** 5,700+
+- **C# Code:** 5,376 lines
+- **XAML UI:** 363 lines
+- **Source Files:** 181 (including generated files)
 
 ------------------------------------------------------------------------
 
@@ -73,13 +73,20 @@ The application is designed for **manual photo review workflows**, where users c
     -   Cancellation tokens prevent race conditions
     -   Fast folder switching without errors
     -   Responsive UI even with large image collections
+-   **Undo/Redo Support**
+    -   Undo move, delete, rotate, and copy operations
+    -   Up to 50 levels of undo history
+    -   Automatic state restoration for all operations
+    -   Visual indicators showing what can be undone/redone
+    -   Full integration with processed images tracking
+    -   Keyboard shortcuts: Ctrl+Z (Undo), Ctrl+Y (Redo)
 
 ------------------------------------------------------------------------
 
 ## 🧭 Application Overview
 
     ----------------------------------------------------------
-    | Profile: [▼] [New] [Delete] (Auto-saves)             |
+    | Profile: [▼] [New] [Delete] (Auto-saves) [↶Undo][↷Redo]|
     | Root: [Browse]  Target: [Browse]                      |
     | Images/page: [▼] Size: [▼] Sort: [▼] [↑↓]            |
     |--------------------------------------------------------|
@@ -103,6 +110,8 @@ The application is designed for **manual photo review workflows**, where users c
 - Check checkbox → Selects image for batch copy
 - Click ↗ button → Instantly moves image to target
 - Click "Copy X Selected" → Batch copies all checked images
+- **↶ Undo button** → Reverses last operation (move, delete, rotate, copy)
+- **↷ Redo button** → Re-applies last undone operation
 - Scrollbar resets to top on page navigation
 - Sort dropdown → Change sorting order
 - ↑↓ button → Toggle sort direction
@@ -266,6 +275,14 @@ The application follows the **MVVM pattern** with clean separation of concerns.
       Profile.cs            - Profile/workspace configuration
       ImageItem.cs          - Image data with metadata
       FolderNode.cs         - Folder tree structure
+      
+    /Commands
+      IUndoableCommand.cs   - Interface for undoable operations
+      UndoRedoManager.cs    - Undo/redo stack management
+      MoveImageCommand.cs   - Undoable move operation
+      DeleteImageCommand.cs - Undoable delete with file backup
+      RotateImageCommand.cs - Undoable rotation
+      CopyImagesCommand.cs  - Undoable batch copy
 
     /ViewModels
       ViewModelBase.cs      - Base class with INotifyPropertyChanged
@@ -276,11 +293,13 @@ The application follows the **MVVM pattern** with clean separation of concerns.
       IImageService.cs      - Image operations interface
       ImageService.cs       - Image loading, rotation, deletion, EXIF handling
 
-    /Views
-      MainWindow.xaml       - Main application window
-      FullscreenImageWindow.xaml - Fullscreen image viewer
-
-    App.xaml.cs             - Application entry point
+    Command Pattern**: Undoable operations with execute/undo methods
+- **Dependency Injection**: IImageService injected into ViewModels
+- **Async/Await**: All I/O operations are asynchronous
+- **Cancellation Tokens**: Prevent race conditions during folder switching
+- **Event Handling**: PropertyChanged for UI updates, custom events for scrolling
+- **Persistent State**: JSON serialization for settings and selections
+- **Undo/Redo Stack**: Command pattern for reversible opera
 
 ### Key Design Patterns
 - **MVVM**: Clear separation between UI and business logic
@@ -391,17 +410,14 @@ Profiles store complete workspace configurations:
 - [x] Status bar with operation feedback
 - [x] Responsive grid layout
 - [x] Slim dropdown styling
+- [x] Undo/redo support (up to 50 levels)
+- [x] Undoable move, delete, rotate, and copy operations
 - [x] Cancellation tokens for race condition prevention
 - [x] Fast folder switching without errors
 
 ------------------------------------------------------------------------
 
-## 🚀 Future Enhancements
-
--   Undo/redo support
--   EXIF metadata editor
--   Image comparison view (side-by-side)
--   AI-based auto classification
+## AI-based auto classification
 -   Rule-based automatic sorting
 -   Drag & drop support
 -   More keyboard shortcuts (Delete, R for rotate, etc.)
@@ -409,6 +425,10 @@ Profiles store complete workspace configurations:
 -   Image filters (date range, file size)
 -   Duplicate detection
 -   Slideshow mode
+-   Video file support
+-   Cloud storage integration
+-   EXIF metadata editor
+-   Image comparison view (side-by-side)
 -   Video file support
 -   Cloud storage integration
 
@@ -453,6 +473,8 @@ Each profile maintains:
 - **Instant Move**: Click ↗ button next to checkbox
 - **Batch Copy**: Check multiple images, click "Copy X Selected"
 - **Rotate**: Right-click → Rotate 90° Clockwise or Counter-Clockwise
+- **Undo**: Click ↶ Undo button or press Ctrl+Z to reverse last operation
+- **Redo**: Click ↷ Redo button or press Ctrl+Y to re-apply undone operation
 - **Delete**: Right-click → Delete
 - **View Location**: Click GPS coordinates or right-click → 📍 View Location (opens Google Maps)
 
