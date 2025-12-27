@@ -132,6 +132,33 @@ public class ImageService : IImageService
         }
     }
 
+    public async Task<bool> MoveImageAsync(string sourceFilePath, string targetFolderPath)
+    {
+        try
+        {
+            if (!Directory.Exists(targetFolderPath))
+            {
+                Directory.CreateDirectory(targetFolderPath);
+            }
+
+            var fileName = Path.GetFileName(sourceFilePath);
+            var targetFilePath = Path.Combine(targetFolderPath, fileName);
+
+            // Skip if file already exists
+            if (File.Exists(targetFilePath))
+            {
+                return false;
+            }
+
+            await Task.Run(() => File.Move(sourceFilePath, targetFilePath));
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     public List<string> GetImageFiles(string folderPath)
     {
         try
@@ -139,7 +166,7 @@ public class ImageService : IImageService
             if (!Directory.Exists(folderPath))
                 return new List<string>();
 
-            return Directory.GetFiles(folderPath)
+            return Directory.GetFiles(folderPath, "*.*", SearchOption.TopDirectoryOnly)
                 .Where(IsImageFile)
                 .OrderBy(f => f)
                 .ToList();

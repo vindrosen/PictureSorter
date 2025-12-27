@@ -52,7 +52,7 @@ public partial class MainWindow : Window
         if (sender is Image image && image.Tag is string imagePath && DataContext is MainViewModel viewModel)
         {
             var allPaths = viewModel.CurrentPageImages.Select(img => img.FilePath).ToList();
-            var fullscreenWindow = new FullscreenImageWindow(imagePath, allPaths);
+            var fullscreenWindow = new FullscreenImageWindow(imagePath, allPaths, viewModel.TargetFolderPath);
             fullscreenWindow.ShowDialog();
         }
     }

@@ -15,18 +15,21 @@ public partial class FullscreenImageWindow : Window
     private readonly List<string> _imagePaths;
     private int _currentIndex;
     private readonly IImageService _imageService;
+    private readonly string? _targetFolderPath;
 
     /// <summary>
     /// Initializes a new instance of the FullscreenImageWindow class.
     /// </summary>
     /// <param name="imagePath">The path of the initial image to display.</param>
     /// <param name="allImagePaths">List of all image paths for navigation.</param>
-    public FullscreenImageWindow(string imagePath, List<string> allImagePaths)
+    /// <param name="targetFolderPath">The target folder path for moving images.</param>
+    public FullscreenImageWindow(string imagePath, List<string> allImagePaths, string? targetFolderPath = null)
     {
         InitializeComponent();
         _imagePaths = allImagePaths;
         _currentIndex = _imagePaths.IndexOf(imagePath);
         _imageService = new ImageService();
+        _targetFolderPath = targetFolderPath;
         
         if (_currentIndex < 0)
         {
@@ -129,13 +132,18 @@ public partial class FullscreenImageWindow : Window
     /// </summary>
     private void UpdateNavigationHint()
     {
-        NavigationHint.Text = $"Image {_currentIndex + 1} of {_imagePaths.Count} - Use ← → arrows to navigate, ESC or click to close";
+        var hint = $"Image {_currentIndex + 1} of {_imagePaths.Count} - Use ← → arrows to navigate, ESC or click to close";
+        if (!string.IsNullOrEmpty(_targetFolderPath))
+        {
+            hint += ", SPACE to move to target";
+        }
+        NavigationHint.Text = hint;
     }
 
     /// <summary>
-    /// Handles keyboard input for navigation (Left/Right arrows) and closing (Escape).
+    /// Handles keyboard input for navigation (Left/Right arrows), moving (Space), and closing (Escape).
     /// </summary>
-    private void Window_KeyDown(object sender, KeyEventArgs e)
+    private async void Window_KeyDown(object sender, KeyEventArgs e)
     {
         switch (e.Key)
         {
@@ -158,6 +166,9 @@ public partial class FullscreenImageWindow : Window
                     UpdateNavigationHint();
                 }
                 break;
+            case Key.Space:
+                await MoveCurrentImageToTarget();
+                break;
         }
     }
 
@@ -167,6 +178,47 @@ public partial class FullscreenImageWindow : Window
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         Close();
+    }
+
+    /// <summary>
+    /// Moves the current image to the target folder.
+    /// </summary>
+    private async Task MoveCurrentImageToTarget()
+    {
+        if (_currentIndex < 0 || _currentIndex >= _imagePaths.Count)
+            return;
+
+        if (string.IsNullOrEmpty(_targetFolderPath))
+        {
+            MessageBox.Show("Please select a target folder first", "No Target Folder", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var imagePath = _imagePaths[_currentIndex];
+        var success = await _imageService.MoveImageAsync(imagePath, _targetFolderPath);
+        
+        if (success)
+        {
+            _imagePaths.RemoveAt(_currentIndex);
+            
+            if (_imagePaths.Count == 0)
+            {
+                Close();
+                return;
+            }
+            
+            if (_currentIndex >= _imagePaths.Count)
+            {
+                _currentIndex = _imagePaths.Count - 1;
+            }
+            
+            LoadCurrentImage();
+            UpdateNavigationHint();
+        }
+        else
+        {
+            MessageBox.Show("File already exists in target folder or failed to move", "Move Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     /// <summary>

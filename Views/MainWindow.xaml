@@ -24,6 +24,11 @@
             <Setter Property="MinWidth" Value="100"/>
         </Style>
         
+        <Style TargetType="ComboBox">
+            <Setter Property="Padding" Value="5,2"/>
+            <Setter Property="Height" Value="26"/>
+        </Style>
+        
         <Style TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
@@ -69,7 +74,18 @@
                               DisplayMemberPath="Name"
                               SelectedValuePath="Size"
                               SelectedValue="{Binding ThumbnailSize}"
-                              Width="120"/>
+                              Width="120" Margin="0,0,30,0"/>
+                    
+                    <TextBlock Text="Sort by:" Width="80" FontWeight="Bold" Margin="0,0,10,0"/>
+                    <ComboBox ItemsSource="{Binding AvailableSortOptions}" 
+                              SelectedItem="{Binding SortBy}"
+                              Width="120" Margin="0,0,10,0"/>
+                    <Button Content="↑↓" 
+                            Command="{Binding ToggleSortDirectionCommand}"
+                            ToolTip="Toggle sort direction"
+                            MinWidth="40"
+                            FontSize="16"
+                            FontWeight="Bold"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -214,11 +230,21 @@
                                             <Run Text="{Binding Longitude, StringFormat='{}{0:F6}'}"/>
                                         </TextBlock>
                                         
-                                        <!-- Checkbox -->
-                                        <CheckBox Content="Copy to target" 
-                                                  IsChecked="{Binding IsChecked}"
-                                                  HorizontalAlignment="Center"
-                                                  Margin="0,5,0,0"/>
+                                        <!-- Actions -->
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5,0,0">
+                                            <CheckBox Content="Copy to target" 
+                                                      IsChecked="{Binding IsChecked}"
+                                                      VerticalAlignment="Center"
+                                                      Margin="0,0,5,0"/>
+                                            <Button Content="↗" 
+                                                    Command="{Binding DataContext.MoveImageCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding FilePath}"
+                                                    ToolTip="Move to target folder"
+                                                    Padding="5,2"
+                                                    MinWidth="30"
+                                                    FontSize="14"
+                                                    FontWeight="Bold"/>
+                                        </StackPanel>
                                     </StackPanel>
                                 </Border>
                             </DataTemplate>
@@ -229,14 +255,44 @@
                 <!-- Navigation Controls -->
                 <Border Grid.Row="1" Background="White" BorderBrush="#CCCCCC" 
                         BorderThickness="0,1,0,0" Padding="20,10">
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                        <Button Content="← Previous" 
-                                Command="{Binding PreviousPageCommand}"
-                                MinWidth="120"/>
-                        <Button Content="Next →" 
-                                Command="{Binding NextPageCommand}"
-                                MinWidth="120"/>
-                    </StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <!-- Left: Page Navigation -->
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Left">
+                            <Button Content="← Previous" 
+                                    Command="{Binding PreviousPageCommand}"
+                                    MinWidth="120"/>
+                            <Button Content="Next →" 
+                                    Command="{Binding NextPageCommand}"
+                                    MinWidth="120"/>
+                        </StackPanel>
+                        
+                        <!-- Center: Copy Selected Button -->
+                        <Button Grid.Column="1" 
+                                Content="{Binding SelectedImagesCount, StringFormat='Copy {0} Selected'}"
+                                Command="{Binding CopySelectedCommand}"
+                                MinWidth="150"
+                                Background="#4CAF50"
+                                Foreground="White"
+                                FontWeight="Bold"
+                                Padding="20,5">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasSelectedImages}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </Grid>
                 </Border>
             </Grid>
         </Grid>

@@ -9,6 +9,13 @@ using PictureSorter.Services;
 
 namespace PictureSorter.ViewModels;
 
+public enum SortOption
+{
+    CreationDate,
+    FileName,
+    FileSize
+}
+
 public class MainViewModel : ViewModelBase
 {
     public event EventHandler? ScrollToTop;
@@ -16,6 +23,8 @@ public class MainViewModel : ViewModelBase
     private readonly string _stateFilePath;
     private readonly string _settingsFilePath;
     private HashSet<string> _processedImages;
+    private HashSet<string> _selectedImages;
+    private CancellationTokenSource? _loadFolderCancellation;
     
     private string? _rootFolderPath;
     private string? _targetFolderPath;
@@ -26,12 +35,43 @@ public class MainViewModel : ViewModelBase
     private bool _isLoading;
     private int _imagesPerPage = 5;
     private int _thumbnailSize = 150;
+    private SortOption _sortBy = SortOption.CreationDate;
+    private bool _sortDescending = true;
 
     public ObservableCollection<FolderNode> FolderTree { get; }
     public ObservableCollection<ImageItem> CurrentPageImages { get; }
 
     public List<int> AvailablePageSizes { get; } = new() { 5, 10, 15, 20, 25, 50, 100 };
     public List<ThumbnailSizeOption> AvailableThumbnailSizes { get; }
+    public List<SortOption> AvailableSortOptions { get; } = new() { SortOption.CreationDate, SortOption.FileName, SortOption.FileSize };
+
+    public SortOption SortBy
+    {
+        get => _sortBy;
+        set
+        {
+            if (_sortBy != value)
+            {
+                _sortBy = value;
+                OnPropertyChanged();
+                _ = ApplySortAndReloadAsync();
+            }
+        }
+    }
+
+    public bool SortDescending
+    {
+        get => _sortDescending;
+        set
+        {
+            if (_sortDescending != value)
+            {
+                _sortDescending = value;
+                OnPropertyChanged();
+                _ = ApplySortAndReloadAsync();
+            }
+        }
+    }
 
     public string? RootFolderPath
     {
@@ -100,6 +140,9 @@ public class MainViewModel : ViewModelBase
     public bool CanNavigatePrevious => _currentPage > 0;
     public bool CanNavigateNext => (_currentPage + 1) * _imagesPerPage < _allImageFiles.Count;
 
+    public int SelectedImagesCount => _selectedImages?.Count ?? 0;
+    public bool HasSelectedImages => SelectedImagesCount > 0;
+
     public ICommand BrowseRootFolderCommand { get; }
     public ICommand BrowseTargetFolderCommand { get; }
     public ICommand PreviousPageCommand { get; }
@@ -109,6 +152,9 @@ public class MainViewModel : ViewModelBase
     public ICommand RotateCounterClockwiseCommand { get; }
     public ICommand DeleteImageCommand { get; }
     public ICommand OpenLocationCommand { get; }
+    public ICommand CopySelectedCommand { get; }
+    public ICommand MoveImageCommand { get; }
+    public ICommand ToggleSortDirectionCommand { get; }
 
     public MainViewModel() : this(new ImageService())
     {
@@ -141,6 +187,7 @@ public class MainViewModel : ViewModelBase
         CurrentPageImages = new ObservableCollection<ImageItem>();
         _allImageFiles = new List<string>();
         _processedImages = new HashSet<string>();
+        _selectedImages = new HashSet<string>();
 
         BrowseRootFolderCommand = new RelayCommand(BrowseRootFolder);
         BrowseTargetFolderCommand = new RelayCommand(BrowseTargetFolder);
@@ -151,6 +198,10 @@ public class MainViewModel : ViewModelBase
         RotateCounterClockwiseCommand = new RelayCommand(RotateCounterClockwise);
         DeleteImageCommand = new RelayCommand(DeleteImage);
         OpenLocationCommand = new RelayCommand(OpenLocation);
+        CopySelectedCommand = new RelayCommand(CopySelected, () => HasSelectedImages);
+        MoveImageCommand = new RelayCommand(MoveImage);
+        ToggleSortDirectionCommand = new RelayCommand(ToggleSortDirection);
+        ToggleSortDirectionCommand = new RelayCommand(ToggleSortDirection);
 
         LoadProcessedImages();
         LoadSettings();
@@ -227,13 +278,17 @@ public class MainViewModel : ViewModelBase
 
     public async Task SelectFolderAsync(string folderPath)
     {
+        // Cancel any ongoing folder load operation
+        _loadFolderCancellation?.Cancel();
+        _loadFolderCancellation = new CancellationTokenSource();
+        
         _selectedFolderPath = folderPath;
         _currentPage = 0;
         
-        await LoadImagesForCurrentFolderAsync();
+        await LoadImagesForCurrentFolderAsync(_loadFolderCancellation.Token);
     }
 
-    private async Task LoadImagesForCurrentFolderAsync()
+    private async Task LoadImagesForCurrentFolderAsync(CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(_selectedFolderPath))
             return;
@@ -246,10 +301,32 @@ public class MainViewModel : ViewModelBase
             // Get all image files and filter out processed ones
             var allFiles = _imageService.GetImageFiles(_selectedFolderPath);
             _allImageFiles = allFiles.Where(f => !_processedImages.Contains(f)).ToList();
+            
+            // Check if cancelled before continuing
+            if (cancellationToken.IsCancellationRequested)
+                return;
+            
+            ApplySort();
 
-            await LoadCurrentPageAsync();
+            await LoadCurrentPageAsync(cancellationToken);
+            
+            // Check if cancelled before updating UI
+            if (cancellationToken.IsCancellationRequested)
+                return;
+            
+            // Update navigation properties
+            OnPropertyChanged(nameof(CanNavigatePrevious));
+            OnPropertyChanged(nameof(CanNavigateNext));
+            
+            // Scroll to top when loading new folder
+            ScrollToTop?.Invoke(this, EventArgs.Empty);
             
             StatusMessage = $"Loaded {_allImageFiles.Count} images from folder";
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when folder changes quickly
+            StatusMessage = "Loading cancelled";
         }
         catch (Exception ex)
         {
@@ -261,7 +338,7 @@ public class MainViewModel : ViewModelBase
         }
     }
 
-    private async Task LoadCurrentPageAsync()
+    private async Task LoadCurrentPageAsync(CancellationToken cancellationToken = default)
     {
         CurrentPageImages.Clear();
 
@@ -272,19 +349,33 @@ public class MainViewModel : ViewModelBase
 
         foreach (var filePath in pageFiles)
         {
+            // Check if operation was cancelled
+            if (cancellationToken.IsCancellationRequested)
+                return;
+            
             var imageItem = new ImageItem
             {
                 FilePath = filePath,
                 FileName = Path.GetFileName(filePath),
-                CreationDate = File.GetCreationTime(filePath)
+                CreationDate = File.GetCreationTime(filePath),
+                IsChecked = _selectedImages.Contains(filePath)
             };
 
             // Subscribe to property changes
-            imageItem.PropertyChanged += async (s, e) =>
+            imageItem.PropertyChanged += (s, e) =>
             {
-                if (e.PropertyName == nameof(ImageItem.IsChecked) && imageItem.IsChecked)
+                if (e.PropertyName == nameof(ImageItem.IsChecked))
                 {
-                    await OnImageCheckedAsync(imageItem);
+                    if (imageItem.IsChecked)
+                    {
+                        _selectedImages.Add(imageItem.FilePath);
+                    }
+                    else
+                    {
+                        _selectedImages.Remove(imageItem.FilePath);
+                    }
+                    OnPropertyChanged(nameof(SelectedImagesCount));
+                    OnPropertyChanged(nameof(HasSelectedImages));
                 }
             };
 
@@ -292,10 +383,20 @@ public class MainViewModel : ViewModelBase
 
             // Load thumbnail asynchronously with configured size
             var thumbnail = await _imageService.LoadThumbnailAsync(filePath, _thumbnailSize);
+            
+            // Check again after async operation
+            if (cancellationToken.IsCancellationRequested)
+                return;
+                
             imageItem.Thumbnail = thumbnail;
             
             // Load GPS coordinates asynchronously
             var gpsData = await _imageService.GetGpsCoordinatesAsync(filePath);
+            
+            // Check again after async operation
+            if (cancellationToken.IsCancellationRequested)
+                return;
+                
             if (gpsData.HasValue)
             {
                 imageItem.Latitude = gpsData.Value.Latitude;
@@ -305,46 +406,6 @@ public class MainViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(CanNavigatePrevious));
         OnPropertyChanged(nameof(CanNavigateNext));
-    }
-
-    private async Task OnImageCheckedAsync(ImageItem imageItem)
-    {
-        if (string.IsNullOrEmpty(TargetFolderPath))
-        {
-            StatusMessage = "Please select a target folder first";
-            imageItem.IsChecked = false;
-            return;
-        }
-
-        try
-        {
-            var success = await _imageService.CopyImageAsync(imageItem.FilePath, TargetFolderPath);
-            
-            if (success)
-            {
-                // Mark as processed
-                _processedImages.Add(imageItem.FilePath);
-                SaveProcessedImages();
-
-                // Remove from current view
-                _allImageFiles.Remove(imageItem.FilePath);
-                
-                StatusMessage = $"Copied: {imageItem.FileName}";
-
-                // Reload current page to refill
-                await LoadCurrentPageAsync();
-            }
-            else
-            {
-                StatusMessage = $"Skipped (already exists): {imageItem.FileName}";
-                imageItem.IsChecked = false;
-            }
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Error copying {imageItem.FileName}: {ex.Message}";
-            imageItem.IsChecked = false;
-        }
     }
 
     private void PreviousPage()
@@ -404,6 +465,95 @@ public class MainViewModel : ViewModelBase
             {
                 StatusMessage = "Failed to rotate image";
             }
+        }
+    }
+
+    private void ApplySort()
+    {
+        switch (_sortBy)
+        {
+            case SortOption.CreationDate:
+                _allImageFiles = _sortDescending
+                    ? _allImageFiles.OrderByDescending(f => File.GetCreationTime(f)).ToList()
+                    : _allImageFiles.OrderBy(f => File.GetCreationTime(f)).ToList();
+                break;
+            case SortOption.FileName:
+                _allImageFiles = _sortDescending
+                    ? _allImageFiles.OrderByDescending(f => Path.GetFileName(f)).ToList()
+                    : _allImageFiles.OrderBy(f => Path.GetFileName(f)).ToList();
+                break;
+            case SortOption.FileSize:
+                _allImageFiles = _sortDescending
+                    ? _allImageFiles.OrderByDescending(f => new FileInfo(f).Length).ToList()
+                    : _allImageFiles.OrderBy(f => new FileInfo(f).Length).ToList();
+                break;
+        }
+    }
+
+    private async Task ApplySortAndReloadAsync()
+    {
+        if (_allImageFiles?.Any() != true)
+            return;
+            
+        ApplySort();
+        _currentPage = 0;
+        await LoadCurrentPageAsync();
+        OnPropertyChanged(nameof(CanNavigatePrevious));
+        OnPropertyChanged(nameof(CanNavigateNext));
+    }
+
+    private void ToggleSortDirection(object? parameter)
+    {
+        SortDescending = !SortDescending;
+    }
+
+    private async void MoveImage(object? parameter)
+    {
+        if (parameter is not string filePath)
+            return;
+
+        if (string.IsNullOrEmpty(TargetFolderPath))
+        {
+            StatusMessage = "Please select a target folder first";
+            return;
+        }
+
+        IsLoading = true;
+        try
+        {
+            var success = await _imageService.MoveImageAsync(filePath, TargetFolderPath);
+            
+            if (success)
+            {
+                // Mark as processed
+                _processedImages.Add(filePath);
+                SaveProcessedImages();
+                
+                // Remove from selection if present
+                _selectedImages.Remove(filePath);
+                OnPropertyChanged(nameof(SelectedImagesCount));
+                OnPropertyChanged(nameof(HasSelectedImages));
+                
+                // Remove from current view
+                _allImageFiles.Remove(filePath);
+                
+                StatusMessage = $"Moved: {Path.GetFileName(filePath)}";
+                
+                // Reload current page to refill
+                await LoadCurrentPageAsync();
+            }
+            else
+            {
+                StatusMessage = $"File already exists in target folder";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error moving image: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 
@@ -581,7 +731,77 @@ public class MainViewModel : ViewModelBase
             System.Windows.MessageBox.Show($"Failed to open browser:\n{ex.Message}\n\nURL: https://www.google.com/maps?q={imageItem.Latitude},{imageItem.Longitude}", "Error");
         }
     }
-}
+    private async void CopySelected()
+    {
+        if (string.IsNullOrEmpty(TargetFolderPath))
+        {
+            StatusMessage = "Please select a target folder first";
+            return;
+        }
+
+        if (!_selectedImages.Any())
+        {
+            StatusMessage = "No images selected";
+            return;
+        }
+
+        IsLoading = true;
+        int successCount = 0;
+        int skipCount = 0;
+        int errorCount = 0;
+
+        try
+        {
+            // Create a copy of selected images to iterate over
+            var imagesToCopy = _selectedImages.ToList();
+            
+            foreach (var filePath in imagesToCopy)
+            {
+                try
+                {
+                    var success = await _imageService.CopyImageAsync(filePath, TargetFolderPath);
+                    
+                    if (success)
+                    {
+                        // Mark as processed
+                        _processedImages.Add(filePath);
+                        
+                        // Remove from selection
+                        _selectedImages.Remove(filePath);
+                        
+                        // Remove from current view if present
+                        _allImageFiles.Remove(filePath);
+                        successCount++;
+                    }
+                    else
+                    {
+                        skipCount++;
+                    }
+                }
+                catch
+                {
+                    errorCount++;
+                }
+            }
+
+            // Save processed images
+            SaveProcessedImages();
+
+            // Update counts
+            OnPropertyChanged(nameof(SelectedImagesCount));
+            OnPropertyChanged(nameof(HasSelectedImages));
+
+            // Show summary
+            StatusMessage = $"Copied: {successCount}, Skipped: {skipCount}, Errors: {errorCount}";
+
+            // Reload current page to refill
+            await LoadCurrentPageAsync();
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }}
 
 public class ThumbnailSizeOption
 {

@@ -29,6 +29,7 @@ public interface IImageService
     /// <param name="targetFolderPath">The destination folder path.</param>
     /// <returns>True if the copy was successful; otherwise false.</returns>
     Task<bool> CopyImageAsync(string sourceFilePath, string targetFolderPath);
+    Task<bool> MoveImageAsync(string sourceFilePath, string targetFolderPath);
     
     /// <summary>
     /// Gets all image files from the specified folder.

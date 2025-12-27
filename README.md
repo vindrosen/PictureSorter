@@ -7,9 +7,9 @@ The application is designed for **manual photo review workflows**, where users c
 **Creator:** Robert Erlandsson
 
 **Project Statistics:**
-- **Total Lines of Code:** 1,389
-- **C# Code:** 1,138 lines
-- **XAML UI:** 251 lines
+- **Total Lines of Code:** 2,079
+- **C# Code:** 1,737 lines
+- **XAML UI:** 342 lines
 - **Source Files:** 13
 
 ------------------------------------------------------------------------
@@ -28,10 +28,20 @@ The application is designed for **manual photo review workflows**, where users c
 -   MVVM-based architecture
 
 ### Advanced Features
+-   **Multi-Select Mode**
+    -   Check multiple images across different folders
+    -   Persistent selection tracking
+    -   "Copy X Selected" button for batch operations
+    -   Selections remain when navigating between folders
 -   **Fullscreen Image Viewer**
     -   Click any image to view it fullscreen
     -   Navigate with arrow keys (Left/Right)
+    -   Press **Space** to move image to target folder
     -   Right-click menu for rotate and delete
+-   **Quick Move Button**
+    -   Small ↗ button next to each checkbox
+    -   Instantly moves image to target folder
+    -   One-click operation for fast sorting
 -   **Image Manipulation**
     -   Rotate images 90° clockwise or counter-clockwise
     -   Delete unwanted images
@@ -41,17 +51,27 @@ The application is designed for **manual photo review workflows**, where users c
     -   Displays coordinates under images with location data
     -   Click coordinates or right-click → "📍 View Location" to open in Google Maps
     -   Supports UInt64 packed rational format for GPS data
+-   **Sorting Options**
+    -   Sort by Creation Date (default, newest first)
+    -   Sort by File Name (alphabetical)
+    -   Sort by File Size
+    -   Toggle sort direction with ↑↓ button
 -   **Configurable Thumbnail Sizes**
-    -   5 size options: Small (100px) to X-Large (300px)
+    -   5 size options: Small (100px) to XX-Large (300px)
 -   **Persistent Settings**
     -   Remembers root and target folders
     -   Saves pagination and thumbnail size preferences
     -   Tracks processed images across sessions
+    -   Maintains sort preferences
 -   **Image Metadata Display**
     -   Shows creation date for each photo
     -   Displays GPS coordinates when available
     -   File name display
 -   **Custom Application Icon**
+-   **Optimized Performance**
+    -   Cancellation tokens prevent race conditions
+    -   Fast folder switching without errors
+    -   Responsive UI even with large image collections
 
 ------------------------------------------------------------------------
 
@@ -59,26 +79,31 @@ The application is designed for **manual photo review workflows**, where users c
 
     ----------------------------------------------------------
     | Root: [Browse]  Target: [Browse]                      |
-    | Images/page: [dropdown]  Size: [dropdown]             |
+    | Images/page: [▼] Size: [▼] Sort: [▼] [↑↓]            |
     |--------------------------------------------------------|
     | Folder Tree      | Image Grid (configurable)          |
     |                  |--------------------------------------|
     |  📁 2024         | [img]  [img]  [img]  [img]  [img]   |
-    |    📁 Vacation   |  ☑      ☐      ☐      ☐      ☐     |
-    |    📁 Birthday   | Date   Date   Date   Date   Date    |
+    |    📁 Vacation   |  ☑↗    ☐↗    ☐↗    ☐↗    ☐↗     |
+    |    📁 Birthday   | 📍GPS  Date   Date   Date   Date    |
     |                  |                                      |
     |                  | [img]  [img]  [img]  [img]  [img]   |
-    |                  |  ☐      ☐      ☐      ☐      ☐     |
+    |                  |  ☐↗    ☐↗    ☐↗    ☐↗    ☐↗     |
     |                  | Date   Date   Date   Date   Date    |
     |                  |--------------------------------------|
-    |                  | ← Previous  Page 1 of 10   Next →   |
+    |                  | ← Previous [Copy 3 Selected] Next → |
     ----------------------------------------------------------
 
 ### Features in Action
 - Click any image → Opens fullscreen viewer
-- Right-click image → Rotate or Delete menu
-- Check checkbox → Copies to target folder instantly
+- Press **Space** in fullscreen → Moves image to target folder
+- Right-click image → Rotate, Delete, or View Location menu
+- Check checkbox → Selects image for batch copy
+- Click ↗ button → Instantly moves image to target
+- Click "Copy X Selected" → Batch copies all checked images
 - Scrollbar resets to top on page navigation
+- Sort dropdown → Change sorting order
+- ↑↓ button → Toggle sort direction
 
 ------------------------------------------------------------------------
 
@@ -132,19 +157,28 @@ Pagination resets when a new folder is selected.
 
 ------------------------------------------------------------------------
 
-## ☑️ Checkbox-Based Copy Workflow
+## ☑️ Multi-Select and Copy Workflow
 
-Each image has a checkbox below it.
+### Multi-Select Confirmation Mode
+1. Check multiple images across any folders
+2. Selections persist when navigating between folders
+3. "Copy X Selected" button shows total selected count
+4. Click button to batch copy all selected images
+5. Selected images are copied and removed from view
 
-### When a checkbox is checked:
+### Quick Move Button
+- Each image has a ↗ button next to the checkbox
+- Click to instantly move the image to target folder
+- No confirmation needed - immediate action
+- Faster than checkbox for single-image sorting
 
-1.  The image file is copied to a user-selected **target folder**
-2.  Existing files are not overwritten
-3.  The image is marked as processed
-4.  The image disappears avoiding reprocessing
-5.  New images fill empty slots automatically
+### Checkbox Behavior
+- Check = Add to selection
+- Uncheck = Remove from selection
+- Selection count updates in real-time
+- Selections maintained across folder navigation
 
-This enables fast and efficient photo review workflows.
+This enables both fast single-image sorting and efficient batch operations.
 
 ------------------------------------------------------------------------
 
@@ -225,7 +259,9 @@ The application follows the **MVVM pattern** with clean separation of concerns.
 - **MVVM**: Clear separation between UI and business logic
 - **Dependency Injection**: IImageService injected into ViewModels
 - **Async/Await**: All I/O operations are asynchronous
+- **Cancellation Tokens**: Prevent race conditions during folder switching
 - **Event Handling**: PropertyChanged for UI updates, custom events for scrolling
+- **Persistent State**: JSON serialization for settings and selections
 
 ------------------------------------------------------------------------
 
@@ -283,18 +319,26 @@ Settings are saved to `%AppData%\PictureSorter\`:
 ### ✅ Core Features
 - [x] Folder tree navigation
 - [x] Configurable pagination (5-100 images)
-- [x] Configurable thumbnail sizes
-- [x] Checkbox-based image copying
-- [x] Auto-refill after copying
+- [x] Configurable thumbnail sizes (100-300px)
+- [x] Multi-select confirmation mode
+- [x] Persistent selection across folders
+- [x] Quick move button (↗) for instant transfers
+- [x] Batch copy operations
+- [x] Auto-refill after copying/moving
 - [x] Persistent settings
 - [x] Processed images tracking
+- [x] Sorting options (Date, Name, Size)
+- [x] Toggle sort direction
 
 ### ✅ Image Operations
 - [x] EXIF orientation support
 - [x] Image rotation (90° clockwise and counter-clockwise)
 - [x] Image deletion
+- [x] Move operation (instant transfer)
+- [x] Copy operation (preserves original)
 - [x] Fullscreen viewer
 - [x] Arrow key navigation
+- [x] Space bar to move in fullscreen
 - [x] Right-click context menus
 - [x] GPS coordinate extraction from EXIF
 - [x] Google Maps integration for GPS locations
@@ -305,26 +349,29 @@ Settings are saved to `%AppData%\PictureSorter\`:
 - [x] Custom application icon
 - [x] Auto-scroll to top on pagination
 - [x] Loading indicators
-- [x] Status bar with image count
+- [x] Status bar with operation feedback
 - [x] Responsive grid layout
+- [x] Slim dropdown styling
+- [x] Cancellation tokens for race condition prevention
+- [x] Fast folder switching without errors
 
 ------------------------------------------------------------------------
 
 ## 🚀 Future Enhancements
 
--   Multi-select confirmation mode
 -   Undo/redo support
--   Batch operations (rotate/delete multiple)
 -   EXIF metadata editor
 -   Image comparison view (side-by-side)
 -   AI-based auto classification
 -   Rule-based automatic sorting
 -   Drag & drop support
--   Keyboard shortcuts (Delete, R for rotate, etc.)
+-   More keyboard shortcuts (Delete, R for rotate, etc.)
 -   Statistics dashboard (processed images per session)
 -   Image filters (date range, file size)
 -   Duplicate detection
 -   Slideshow mode
+-   Video file support
+-   Cloud storage integration
 
 ------------------------------------------------------------------------
 
@@ -338,14 +385,19 @@ Settings are saved to `%AppData%\PictureSorter\`:
 
 ### Sorting Workflow
 1. Configure your preferred images per page and thumbnail size
-2. Browse through images using Previous/Next buttons
-3. Check the checkbox below images you want to keep
-4. Checked images are automatically copied to target folder
-5. Deleted images disappear and new ones fill their place
+2. Choose sort order (Creation Date, File Name, or File Size)
+3. Toggle sort direction with ↑↓ button if needed
+4. Browse through images using Previous/Next buttons
+5. Use quick move button (↗) for instant single-image transfers
+6. Or check multiple images and use "Copy X Selected" for batch operations
+7. Moved/copied images disappear and new ones fill their place
 
 ### Image Operations
 - **Fullscreen View**: Click any image
 - **Navigate**: Use Left/Right arrow keys in fullscreen
+- **Quick Move**: Press Space in fullscreen to move image to target
+- **Instant Move**: Click ↗ button next to checkbox
+- **Batch Copy**: Check multiple images, click "Copy X Selected"
 - **Rotate**: Right-click → Rotate 90° Clockwise or Counter-Clockwise
 - **Delete**: Right-click → Delete
 - **View Location**: Click GPS coordinates or right-click → 📍 View Location (opens Google Maps)
@@ -355,7 +407,9 @@ All settings are automatically saved:
 - Root and target folder paths
 - Images per page preference
 - Thumbnail size preference
+- Sort by and sort direction preferences
 - Processed images list
+- Selected images for batch operations
 
 ------------------------------------------------------------------------
 
